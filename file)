@@ -1,0 +1,10 @@
+import streamlit as st
+from customer import Customer
+
+def main():
+    st.title("Forklift Company CRM")
+    customer = Customer()
+    # Add Streamlit UI code here
+
+if __name__ == "__main__":
+    main()
