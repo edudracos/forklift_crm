@@ -6,7 +6,9 @@ from forklift import Forklift
 from service_part import ServicePart
 from sale import Sale
 from item import Item
+import json
 import datetime
+
 
 # Initialize Deta with your Deta.sh API key
 deta = Deta(st.secrets["DETA_KEY"])  
@@ -14,6 +16,20 @@ customers_db = deta.Base("customers")
 forklifts_db = deta.Base("forklifts")  
 service_parts_db = deta.Base("service_parts")  
 sales_db = deta.Base("sales")  
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime): 
+            return obj.isoformat()  
+        if isinstance(obj, Forklift):
+            return obj.__dict__
+        if isinstance(obj, ServicePart):
+            return obj.__dict__
+        if isinstance(obj, Sale):
+            return obj.__dict__
+        if isinstance(obj, Item):
+            return obj.__dict__
+        return super().default(obj)
 
 def add_new_customer_menu():
     st.subheader("Add New Customer")
@@ -154,17 +170,14 @@ def main():
                     paid_status = "Paid" if item.is_paid else "Unpaid"
                     st.write(f"- {item_name} (Price: ${item_price:.2f}), Quantity: {item_quantity} - {paid_status}")
 
-    # Helper function to mark service as paid or unpaid
     def mark_service_payment(customer, service_name, is_paid):
         customer.mark_service_as_paid(service_name) if is_paid else customer.mark_service_as_unpaid(service_name)
         customers_db.put(customer.__dict__)
 
-    # Helper function to mark forklift as paid or unpaid
     def mark_forklift_payment(customer, forklift_name, is_paid):
         customer.mark_forklift_as_paid(forklift_name) if is_paid else customer.mark_forklift_as_unpaid(forklift_name)
         customers_db.put(customer.__dict__)
 
-    # Helper function to mark item as paid or unpaid
     def mark_item_payment(customer, item_name, is_paid):
         customer.mark_item_as_paid(item_name) if is_paid else customer.mark_item_as_unpaid(item_name)
         customers_db.put(customer.__dict__)
@@ -198,10 +211,11 @@ def main():
             if st.button("Associate Item"):
                 if not selected_customer.sales:
                     new_sale_id = len(sales_db.fetch().items) + 1
-                    selected_customer.add_sale(Sale(id=new_sale_id, date=datetime.now(), items=[], total_cost=0.0))
+                    selected_customer.add_sale(Sale(id=new_sale_id, date=datetime.datetime.now(), items=[], total_cost=0.0))
+
 
                 if item_type == "Service":
-                    selected_customer.add_service_part(selected_item)
+                    selected_customer.add_service_part(selected_item.to_dict())
                 elif item_type == "Forklift":
                     selected_customer.add_forklift(selected_item)
                 elif item_type == "Item":
@@ -211,10 +225,16 @@ def main():
                     item = Item(product=item_product, quantity=1, is_paid=is_paid)
                     selected_customer.sales[0].items.append(item)
 
-                customers_db.put(selected_customer.__dict__)
+                # Convert the selected_customer object to JSON using the custom encoder
+                selected_customer_json = json.dumps(selected_customer.__dict__, cls=CustomJSONEncoder)
+
+                # Update the data in the Deta database
+                customers_db.put(json.loads(selected_customer_json))  # Convert back from JSON to dictionary
+
                 st.success(f"{item_type} '{selected_item_name}' associated with customer '{selected_customer_name}' successfully!")
         else:
             st.warning(f"No {item_type}s found. Please add {item_type.lower()}s first.")
+
 
     def mark_item_as_paid_or_unpaid():
         st.subheader("Mark Item as Paid or Unpaid")
