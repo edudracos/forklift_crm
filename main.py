@@ -237,20 +237,65 @@ def main():
 
 
     def mark_item_as_paid_or_unpaid():
-        st.subheader("Mark Item as Paid or Unpaid")
-        customer_names = [customer.name for customer in customers]
-        selected_customer_name = st.selectbox("Select a customer", customer_names)
-        selected_customer = [customer for customer in customers if customer.name == selected_customer_name][0]
+        st.title("Mark Item as Paid or Unpaid")
+        selected_customer = get_selected_customer()
+        if selected_customer is None:
+            st.warning("Please select a customer first.")
+            return
 
-        item_type = st.radio("Select the item type:", ("Service", "Forklift", "Item"))
-        item_name = st.text_input(f"{item_type} Name")
+        associated_items = []
+        for sale in selected_customer.sales:
+            for item in sale.items:
+                if isinstance(item.product, Forklift):
+                    associated_items.append(item.product)
+                elif isinstance(item.product, ServicePart):
+                    associated_items.append(item.product)
+                else:
+                    associated_items.append(item.product.product)
+    
+    # Display associated items
+        if associated_items:
+            st.write("Items associated with the customer:")
+            for item in associated_items:
+                st.write(f"- {item.name} ({item.item_type})")
 
-        if st.button("Mark as Paid"):
-            mark_item_payment(selected_customer, item_name, True)
-            st.success(f"{item_type} '{item_name}' marked as paid for customer '{selected_customer_name}'!")
-        if st.button("Mark as Unpaid"):
-            mark_item_payment(selected_customer, item_name, False)
-            st.success(f"{item_type} '{item_name}' marked as unpaid for customer '{selected_customer_name}'!")
+            item_type = st.radio("Select item type to mark as Paid/Unpaid:", ["Item", "Service", "Forklift"])
+        
+            associated_item_names = []
+            for sale in selected_customer.sales:
+                for item in sale.items:
+                    if isinstance(item.product, Forklift):
+                        associated_item_names.append(item.product.name)
+                    elif isinstance(item.product, ServicePart):
+                        associated_item_names.append(item.product.name)
+                    else:
+                        associated_item_names.append(item.product.product.name)
+
+            selected_item = st.selectbox("Select item:", associated_item_names)
+        
+            status = st.radio("Mark as:", ["Paid", "Unpaid"])
+        
+            if st.button("Mark"):
+                if item_type == "Item":
+                # Update the status of the selected item
+                    for sale in selected_customer.sales:
+                        for item in sale.items:
+                            if isinstance(item.product, Forklift) and item.product.name == selected_item:
+                                item.product.paid = status == "Paid"
+                            elif isinstance(item.product, ServicePart) and item.product.name == selected_item:
+                                item.product.paid = status == "Paid"
+                            elif isinstance(item.product, Item) and item.product.product.name == selected_item:
+                                item.product.paid = status == "Paid"
+                
+                # Update the Deta database with the modified customer data
+                    selected_customer_json = json.dumps(selected_customer.__dict__, cls=CustomJSONEncoder)
+                    customers_db.put(selected_customer_json, encoder=CustomJSONEncoder)
+                
+                    st.success(f"{selected_item} marked as {status}.")
+                else:
+                    st.error("Marking as Paid/Unpaid is only available for Items.")
+        else:
+            st.write("No items associated with the customer.")
 
     menu_options = [
         "Add New Customer",
