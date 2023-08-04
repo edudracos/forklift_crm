@@ -4,22 +4,30 @@ from service_part import ServicePart
 from sale import Sale
 
 class Customer:
-    def __init__(self, id: int, name: str, contact_details: str, forklifts: List[Forklift] = [], service_parts: List[ServicePart] = [], sales: List[Sale] = []):
+    def __init__(self, id: int, name: str, contact_details: str,
+                phone_number: str, address: str, email: str, notes: str,
+                forklifts: List[Forklift] = [], service_parts: List[ServicePart] = [],
+                sales: List[Sale] = []):
         self.id = id
         self.name = name
         self.contact_details = contact_details
+        self.phone_number = phone_number
+        self.address = address
+        self.email = email
+        self.notes = notes
         self.forklifts = forklifts
         self.service_parts = service_parts
         self.sales = sales
 
-    def add_forklift(self, forklift: Forklift) -> None:
+    def add_forklift(self, forklift: Forklift):
         self.forklifts.append(forklift)
 
-    def add_service_part(self, service_part: ServicePart) -> None:
+    def add_service_part(self, service_part: ServicePart):
         self.service_parts.append(service_part)
 
-    def add_sale(self, sale: Sale) -> None:
+    def add_sale(self, sale: Sale):
         self.sales.append(sale)
+
 
     @property
     def total_owed(self) -> float:

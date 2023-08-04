@@ -19,8 +19,8 @@ sales_db = deta.Base("sales")
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, datetime.datetime): 
-            return obj.isoformat()  
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
         if isinstance(obj, Forklift):
             return obj.__dict__
         if isinstance(obj, ServicePart):
@@ -30,32 +30,39 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, Item):
             return obj.__dict__
         return super().default(obj)
+    
+def get_selected_customer(selected_customer_name):
+    customer_data = customers_db.fetch().items.get(selected_customer_name)
+    if customer_data:
+        customer_data.pop('key', None)
+        return Customer(**customer_data)
+    return None
+def add_new_customer_to_db(new_customer):
+    customers_db.put(new_customer.__dict__)
 
-def add_new_customer_menu():
+def add_new_customer():
     st.subheader("Add New Customer")
     name = st.text_input("Name")
+    phone_number = st.text_input("Phone Number")
+    address = st.text_input("Address")
+    email = st.text_input("Email")
     contact_details = st.text_area("Contact Details")
+    notes = st.text_area("Notes")
 
-    if st.button("Add Customer"):
+    if st.button("Add Customer", key="check_1"):
         # Generate a unique ID for the new customer
         new_customer_id = len(customers_db.fetch().items) + 1
 
-        # Retrieve existing forklifts, service parts, and sales from their respective bases
-        forklifts_data = list(forklifts_db.fetch().items)
-        service_parts_data = list(service_parts_db.fetch().items)
-        sales_data = list(sales_db.fetch().items)
-
-        # Convert forklift data to a list of Forklift objects
-        forklifts = [Forklift(**data) for data in forklifts_data]
-
-        # Convert service part data to a list of ServicePart objects
-        service_parts = [ServicePart(**data) for data in service_parts_data]
-
-        # Convert sale data to a list of Sale objects
-        sales = [Sale(**data) for data in sales_data]
-
-        new_customer = Customer(id=new_customer_id, name=name, contact_details=contact_details, forklifts=forklifts, service_parts=service_parts, sales=sales)
-        customers_db.put(new_customer.__dict__)
+        new_customer = Customer(
+            id=new_customer_id,
+            name=name,
+            phone_number=phone_number,
+            address=address,
+            email=email,
+            contact_details=contact_details,
+            notes=notes
+        )
+        add_new_customer_to_db(new_customer)
         st.success(f"Customer '{name}' added successfully!")
         st.info("Please refresh the page to see the updated customer list.")
 
@@ -68,7 +75,7 @@ def main():
     # Check if there are any customers in the database
     if not customers_data:
         st.error("No customers found. Please add a customer first.")
-        add_new_customer_menu()
+        add_new_customer()
         return
 
     # Convert customer data to a list of Customer objects
@@ -112,29 +119,14 @@ def main():
             st.success(f"Service Part '{part_name}' added successfully!")
 
     # Helper function to add a new item to a sale
-    def add_item():
-        st.subheader("Add an Item")
-        sale_id = st.number_input("Sale ID", step=1)
-        product_name = st.text_input("Product Name")
-        product_price = st.number_input("Product Price", step=0.01)
-        item_quantity = st.number_input("Quantity", step=1)
+    
+    def add_item(selected_customer, selected_sale, item):
+        selected_sale.items.append(item)
+        customers_db.put(selected_customer.__dict__)
 
-        if st.button("Add Item"):
-            sales_data = sales_db.fetch()
-            selected_sale_data = [sale for sale in sales_data.items if sale["id"] == sale_id]
-            if selected_sale_data:
-                selected_sale = Sale(**selected_sale_data[0])
-                if product_name in [forklift.name for forklift in selected_sale.items]:
-                    product = Forklift(id=0, name=product_name, price=product_price)
-                else:
-                    product = ServicePart(id=0, name=product_name, price=product_price)
-
-                new_item = Item(product=product, quantity=item_quantity)
-                selected_sale.items.append(new_item)
-                sales_db.put(selected_sale.__dict__)
-                st.success("Item added to sale successfully!")
-            else:
-                st.error("Sale not found. Please enter a valid Sale ID.")
+    def add_sale(selected_customer, sale):
+        selected_customer.sales.append(sale)
+        customers_db.put(selected_customer.__dict__)
 
     # Helper function to display customer details
     def display_customer_details(customer):
@@ -182,120 +174,77 @@ def main():
         customer.mark_item_as_paid(item_name) if is_paid else customer.mark_item_as_unpaid(item_name)
         customers_db.put(customer.__dict__)
 
+    def manage_items(selected_customer):
+        st.subheader("Manage Items")
 
-    def associate_item():
-        st.subheader("Associate Item with Customer")
-        customer_names = [customer.name for customer in customers]
-        selected_customer_name = st.selectbox("Select a customer", customer_names)
-        selected_customer = [customer for customer in customers if customer.name == selected_customer_name][0]
+        st.write(f"Customer: {selected_customer.name}")
+        st.write(f"Total Debt: ${selected_customer.total_owed:.2f}")
 
-        item_type = st.radio("Select the item type:", ("Service", "Forklift", "Item"))
-        if item_type == "Service":
-            existing_items_data = list(service_parts_db.fetch().items)
-            existing_items = [ServicePart(**data) for data in existing_items_data]
-        elif item_type == "Forklift":
-            existing_items_data = list(forklifts_db.fetch().items)
-            existing_items = [Forklift(**data) for data in existing_items_data]
-        elif item_type == "Item":
-            existing_forklifts_data = list(forklifts_db.fetch().items)
-            existing_forklifts = [Forklift(**data) for data in existing_forklifts_data]
-            existing_service_parts_data = list(service_parts_db.fetch().items)
-            existing_service_parts = [ServicePart(**data) for data in existing_service_parts_data]
-            existing_items = existing_forklifts + existing_service_parts
+        existing_items_data = list(service_parts_db.fetch().items) + list(forklifts_db.fetch().items)
+        existing_items = [ServicePart(**data) if "is_paid" in data else Forklift(**data) for data in existing_items_data]
+        existing_item_names = [item.name for item in existing_items]
 
-        if existing_items:
-            existing_item_names = [item.name for item in existing_items]
-            selected_item_name = st.selectbox(f"Select a {item_type}", existing_item_names)
-            selected_item = [item for item in existing_items if item.name == selected_item_name][0]
+        selected_item_name = st.selectbox("Select an item", existing_item_names)
 
-            if st.button("Associate Item"):
-                if not selected_customer.sales:
-                    new_sale_id = len(sales_db.fetch().items) + 1
-                    selected_customer.add_sale(Sale(id=new_sale_id, date=datetime.datetime.now(), items=[], total_cost=0.0))
+        item = next((item for item in existing_items if item.name == selected_item_name), None)
 
-
-                if item_type == "Service":
-                    selected_customer.add_service_part(selected_item.to_dict())
-                elif item_type == "Forklift":
-                    selected_customer.add_forklift(selected_item)
-                elif item_type == "Item":
-                    selected_item_price = selected_item.price
-                    is_paid = st.checkbox("Is Paid", value=False)
-                    item_product = Forklift(id=0, name=selected_item_name, price=selected_item_price) if isinstance(selected_item, Forklift) else ServicePart(id=0, name=selected_item_name, price=selected_item_price)
-                    item = Item(product=item_product, quantity=1, is_paid=is_paid)
-                    selected_customer.sales[0].items.append(item)
-
-                # Convert the selected_customer object to JSON using the custom encoder
-                selected_customer_json = json.dumps(selected_customer.__dict__, cls=CustomJSONEncoder)
-
-                # Update the data in the Deta database
-                customers_db.put(json.loads(selected_customer_json))  # Convert back from JSON to dictionary
-
-                st.success(f"{item_type} '{selected_item_name}' associated with customer '{selected_customer_name}' successfully!")
-        else:
-            st.warning(f"No {item_type}s found. Please add {item_type.lower()}s first.")
-
-
-    def mark_item_as_paid_or_unpaid():
-        st.title("Mark Item as Paid or Unpaid")
-        selected_customer = get_selected_customer()
-        if selected_customer is None:
-            st.warning("Please select a customer first.")
+        if not item:
+            st.error("Selected item not found.")
             return
 
-        associated_items = []
+        associated_items = set()
         for sale in selected_customer.sales:
-            for item in sale.items:
-                if isinstance(item.product, Forklift):
-                    associated_items.append(item.product)
-                elif isinstance(item.product, ServicePart):
-                    associated_items.append(item.product)
-                else:
-                    associated_items.append(item.product.product)
-    
-    # Display associated items
+            for sale_item in sale.items:
+                if sale_item.product.name == selected_item_name:
+                    associated_items.add(sale.id)
+
         if associated_items:
             st.write("Items associated with the customer:")
-            for item in associated_items:
-                st.write(f"- {item.name} ({item.item_type})")
+            for sale_id in associated_items:
+                st.write(f"- Sale ID: {sale_id}")
 
-            item_type = st.radio("Select item type to mark as Paid/Unpaid:", ["Item", "Service", "Forklift"])
-        
-            associated_item_names = []
-            for sale in selected_customer.sales:
-                for item in sale.items:
-                    if isinstance(item.product, Forklift):
-                        associated_item_names.append(item.product.name)
-                    elif isinstance(item.product, ServicePart):
-                        associated_item_names.append(item.product.name)
-                    else:
-                        associated_item_names.append(item.product.product.name)
+        action_type = st.radio("Select action", ["Associate Item", "Mark as Paid", "Mark as Unpaid"])
 
-            selected_item = st.selectbox("Select item:", associated_item_names)
-        
-            status = st.radio("Mark as:", ["Paid", "Unpaid"])
-        
-            if st.button("Mark"):
-                if item_type == "Item":
-                # Update the status of the selected item
-                    for sale in selected_customer.sales:
-                        for item in sale.items:
-                            if isinstance(item.product, Forklift) and item.product.name == selected_item:
-                                item.product.paid = status == "Paid"
-                            elif isinstance(item.product, ServicePart) and item.product.name == selected_item:
-                                item.product.paid = status == "Paid"
-                            elif isinstance(item.product, Item) and item.product.product.name == selected_item:
-                                item.product.paid = status == "Paid"
-                
-                # Update the Deta database with the modified customer data
-                    selected_customer_json = json.dumps(selected_customer.__dict__, cls=CustomJSONEncoder)
-                    customers_db.put(selected_customer_json, encoder=CustomJSONEncoder)
-                
-                    st.success(f"{selected_item} marked as {status}.")
+        if action_type == "Associate Item":
+            if selected_item_name in existing_item_names:
+                sale_id = st.number_input("Sale ID", min_value=1, step=1)
+                is_paid = st.checkbox("Is Paid", value=False)
+
+                new_item = Item(product=item, quantity=1, is_paid=is_paid)
+                sale = next((sale for sale in selected_customer.sales if sale.id == sale_id), None)
+
+                if sale:
+                    add_item(selected_customer, sale, new_item)
+                    st.success(f"Item '{selected_item_name}' associated with customer '{selected_customer.name}' successfully.")
                 else:
-                    st.error("Marking as Paid/Unpaid is only available for Items.")
-        else:
-            st.write("No items associated with the customer.")
+                    st.error("Sale not found. Please enter a valid Sale ID.")
+
+        elif action_type in ["Mark as Paid", "Mark as Unpaid"]:
+            for sale in selected_customer.sales:
+                for sale_item in sale.items:
+                    if sale_item.product.name == selected_item_name:
+                        sale_item.is_paid = action_type == "Mark as Paid"
+                        customers_db.put(selected_customer.__dict__)
+                        st.success(f"Item '{selected_item_name}' marked as {'Paid' if action_type == 'Mark as Paid' else 'Unpaid'}.")
+                        return
+        elif action_type == "Associate Item":
+            if selected_item_name in existing_item_names:
+                sale_id = st.number_input("Sale ID", min_value=1, step=1)
+                is_paid = st.checkbox("Is Paid", value=False)
+
+                new_item = Item(product=item, quantity=1, is_paid=is_paid)
+                sale = next((sale for sale in selected_customer.sales if sale.id == sale_id), None)
+
+                if sale:
+                    add_item(selected_customer, sale, new_item)
+                    st.success(f"Item '{selected_item_name}' associated with customer '{selected_customer.name}' successfully.")
+                else:
+                    st.error("Sale not found. Please enter a valid Sale ID.")
+
+            st.error("Selected item is not associated with the customer.")
+
+
+
 
     menu_options = [
         "Add New Customer",
@@ -303,14 +252,13 @@ def main():
         "Add a Forklift",
         "Add a Service Part",
         "Add an Item",
-        "Associate Item with Customer",
-        "Mark Item as Paid or Unpaid",
+        "Manage Items",
     ]
 
     choice = st.sidebar.selectbox("Select an option", menu_options)
 
     if choice == "Add New Customer":
-        add_new_customer_menu()
+        add_new_customer()
     elif choice == "View Customer Details":
         if not customers:
             st.warning("No customers found. Please add a customer first.")
@@ -325,11 +273,18 @@ def main():
         add_service_part()
     elif choice == "Add an Item":
         add_item()
-    elif choice == "Associate Item with Customer":
-        associate_item()
-    elif choice == "Mark Item as Paid or Unpaid":
-        mark_item_as_paid_or_unpaid()
+    elif choice == "Manage Items":
+        manage_items()
+
+        selected_customer_name = st.selectbox("Select a customer", customer_names)
+        selected_customer = get_selected_customer(selected_customer_name)
+        manage_items(selected_customer)
 
 if __name__ == "__main__":
+    from customer import Customer
+    from forklift import Forklift
+    from service_part import ServicePart
+    from sale import Sale
+    from item import Item
     main()
 
