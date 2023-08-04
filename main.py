@@ -93,13 +93,16 @@ def main():
     # Helper function to add a new forklift
     def add_forklift():
         st.subheader("Add a Forklift")
-        forklift_name = st.text_input("Forklift Name")
+        forklift_year = st.text_input("Forklift Year")
+        forklift_model= st.text_input("Forklift Model")
+        forklift_brand= st.text_input("Forklift Brand")
+        forklift_vin= st.text_input("Forklift Vin")
         forklift_price = st.number_input("Forklift Price", step=0.01)
 
         if st.button("Add Forklift"):
             # Generate a unique ID for the new forklift
             new_forklift_id = len(forklifts_db.fetch().items) + 1
-            new_forklift = Forklift(id=new_forklift_id, name=forklift_name, price=forklift_price)
+            new_forklift = Forklift(id=new_forklift_id, year=forklift_year, model=forklift_model, brand=forklift_brand, vin=forklift_vin, price=forklift_price)
             forklifts_db.put(new_forklift.__dict__)
 
             st.success(f"Forklift '{forklift_name}' added successfully!")
